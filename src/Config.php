@@ -31,28 +31,36 @@ final class Config
 
     public static function fromEnv(): self
     {
-        $root = dirname(__DIR__);
+        $root = dirname(__DIR__); 
+
         if (file_exists($root . '/.env')) {
-            Dotenv::createImmutable($root)->safeLoad();
+            $dotenv = Dotenv::createImmutable($root);
+            // load into $_ENV / $_SERVER (getenv() may be unreliable on Windows)
+            $dotenv->load();
         }
 
-        $stateFile = getenv('STATE_FILE') ?: ($root . '/state.json');
+        $env = static function (string $key, $default = null) {
+            $v = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+            return ($v === false || $v === null || $v === '') ? $default : $v;
+        };
 
-        $shopDomain = (string)(getenv('SHOPIFY_SHOP_DOMAIN') ?: '');
-        $shopToken  = (string)(getenv('SHOPIFY_ACCESS_TOKEN') ?: '');
-        $apiVersion = (string)(getenv('SHOPIFY_API_VERSION') ?: '2026-01');
+        $stateFile = (string) $env('STATE_FILE', $root . '/state.json');
 
-        $netvisorBaseUrl = (string)(getenv('NETVISOR_BASE_URL') ?: 'https://isvapi.netvisor.fi');
+        $shopDomain = (string) $env('SHOPIFY_SHOP_DOMAIN', '');
+        $shopToken  = (string) $env('SHOPIFY_ACCESS_TOKEN', '');
+        $apiVersion = (string) $env('SHOPIFY_API_VERSION', '2026-01');
 
-        $sender = (string)(getenv('NETVISOR_SENDER') ?: '');
-        $partnerId = (string)(getenv('NETVISOR_PARTNER_ID') ?: '');
-        $customerId = (string)(getenv('NETVISOR_CUSTOMER_ID') ?: '');
-        $token = (string)(getenv('NETVISOR_TOKEN') ?: '');
-        $macKey = (string)(getenv('NETVISOR_MAC_KEY') ?: '');
-        $language = (string)(getenv('NETVISOR_LANGUAGE') ?: 'FI');
-        $organizationId = (string)(getenv('NETVISOR_ORG_ID') ?: '');
-        $useHttpStatusCodes = (bool)((int)(getenv('NETVISOR_USE_HTTP_STATUS') ?: 1));
-        $macAlgorithm = (string)(getenv('NETVISOR_MAC_ALGO') ?: 'HMACSHA256');
+        $netvisorBaseUrl = (string) $env('NETVISOR_BASE_URL', 'https://isvapi.netvisor.fi');
+
+        $sender = (string) $env('NETVISOR_SENDER', '');
+        $partnerId = (string) $env('NETVISOR_PARTNER_ID', '');
+        $customerId = (string) $env('NETVISOR_CUSTOMER_ID', '');
+        $token = (string) $env('NETVISOR_TOKEN', '');
+        $macKey = (string) $env('NETVISOR_MAC_KEY', '');
+        $language = (string) $env('NETVISOR_LANGUAGE', 'FI');
+        $organizationId = (string) $env('NETVISOR_ORG_ID', '');
+        $useHttpStatusCodes = (bool) ((int) $env('NETVISOR_USE_HTTP_STATUS', 1));
+        $macAlgorithm = (string) $env('NETVISOR_MAC_ALGO', 'HMACSHA256');
 
         $missing = [];
         if ($shopDomain === '') $missing[] = 'SHOPIFY_SHOP_DOMAIN';
@@ -78,9 +86,10 @@ final class Config
             macAlgorithm: $macAlgorithm
         );
 
-        $httpTimeout = (int)(getenv('HTTP_TIMEOUT') ?: 20);
-        $httpConnectTimeout = (int)(getenv('HTTP_CONNECT_TIMEOUT') ?: 10);
-        $httpProxy = getenv('HTTP_PROXY') ?: null;
+        $httpTimeout = (int) $env('HTTP_TIMEOUT', 20);
+        $httpConnectTimeout = (int) $env('HTTP_CONNECT_TIMEOUT', 10);
+        $httpProxy = $env('HTTP_PROXY', null);
+        $httpProxy = ($httpProxy === '') ? null : $httpProxy;
 
         return new self(
             stateFile: $stateFile,
@@ -93,10 +102,10 @@ final class Config
             httpConnectTimeout: $httpConnectTimeout,
             httpProxy: $httpProxy,
 
-            netvisorDefaultCustomerCode: (string)(getenv('NETVISOR_DEFAULT_CUSTOMER_CODE') ?: 'CASH'),
-            netvisorDefaultPaymentTermDays: (int)(getenv('NETVISOR_DEFAULT_PAYMENT_TERM') ?: 14),
-            netvisorDefaultVatPercent: (float)(getenv('NETVISOR_DEFAULT_VAT_PERCENT') ?: 25.5),
-            netvisorDefaultProductCode: (string)(getenv('NETVISOR_DEFAULT_PRODUCT_CODE') ?: 'SHOPIFY_ITEM'),
+            netvisorDefaultCustomerCode: (string) $env('NETVISOR_DEFAULT_CUSTOMER_CODE', 'CASH'),
+            netvisorDefaultPaymentTermDays: (int) $env('NETVISOR_DEFAULT_PAYMENT_TERM', 14),
+            netvisorDefaultVatPercent: (float) $env('NETVISOR_DEFAULT_VAT_PERCENT', 25.5),
+            netvisorDefaultProductCode: (string) $env('NETVISOR_DEFAULT_PRODUCT_CODE', 'SHOPIFY_ITEM'),
         );
     }
 }
