@@ -1,0 +1,20 @@
+{
+  "name": "demo/shopify-to-netvisor",
+  "type": "project",
+  "require": {
+    "php": "^8.4",
+    "guzzlehttp/guzzle": "^7.8",
+    "vlucas/phpdotenv": "^5.5",
+    "ext-json": "*",
+    "ext-hash": "*",
+    "ext-simplexml": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Demo\\": "src/"
+    }
+  },
+  "scripts": {
+    "run": "php bin/run.php"
+  }
+}
