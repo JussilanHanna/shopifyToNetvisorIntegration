@@ -12,11 +12,16 @@ final class StateStore
         private readonly Logger $logger
     ) {
         $this->state = $this->load();
+        $this->state['sent'] ??= [];
+        $this->state['shopify'] ??= [];
     }
+
+    // ---------------------------
+    // Existing checkpoint logic
+    // ---------------------------
 
     public function getLastRunIso(): string
     {
-        // default: 15 min poll + pieni turvamarginaali
         return $this->state['lastRunIso'] ?? gmdate('c', time() - 1800);
     }
 
@@ -40,31 +45,62 @@ final class StateStore
         $this->save();
     }
 
+    // ---------------------------
+    // Shopify token cache
+    // ---------------------------
+
+    public function getShopifyAccessToken(): ?string
+    {
+        $t = $this->state['shopify']['access_token'] ?? null;
+        return (is_string($t) && $t !== '') ? $t : null;
+    }
+
+    public function getShopifyTokenExpiresAt(): ?int
+    {
+        $ts = $this->state['shopify']['expires_at'] ?? null;
+        return is_int($ts) ? $ts : null;
+    }
+
+    public function setShopifyToken(string $token, int $expiresAtEpoch): void
+    {
+        $this->state['shopify']['access_token'] = $token;
+        $this->state['shopify']['expires_at'] = $expiresAtEpoch;
+        $this->save();
+    }
+
+    // ---------------------------
+    // File IO (atomic)
+    // ---------------------------
+
     private function load(): array
     {
-        if (!is_file($this->path)) return ['sent' => []];
+        if (!is_file($this->path)) {
+            return ['sent' => [], 'shopify' => []];
+        }
         $raw = @file_get_contents($this->path);
         $json = json_decode($raw ?: '[]', true);
-        return is_array($json) ? $json : ['sent' => []];
+        return is_array($json) ? $json : ['sent' => [], 'shopify' => []];
     }
 
     private function save(): void
     {
         $dir = dirname($this->path);
-        if (!is_dir($dir)) @mkdir($dir, 0777, true);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
 
         $tmp = $this->path . '.tmp';
-        $data = json_encode($this->state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $data = json_encode($this->state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $fp = @fopen($tmp, 'c');
         if ($fp === false) {
-            $this->logger->error('Failed to open temp state file', ['tmp' => $tmp]);
+            $this->logger->error('Failed to open temp state file for writing', ['tmp' => $tmp]);
             return;
         }
 
         try {
             if (!flock($fp, LOCK_EX)) {
-                $this->logger->error('Failed to lock state temp file', ['tmp' => $tmp]);
+                $this->logger->error('Failed to acquire lock for state file', ['tmp' => $tmp]);
                 fclose($fp);
                 return;
             }

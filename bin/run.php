@@ -25,7 +25,8 @@ try {
 $state = new StateStore($config->stateFile, $logger);
 $http = HttpClientFactory::create($config);
 
-$shopify = new ShopifyClient($http, $logger, $config->shopifyShopDomain, $config->shopifyAccessToken, $config->shopifyApiVersion);
+$shopify = new ShopifyClient($http, $logger, $config, $state);
+
 $netvisor = new NetvisorClient($http, $logger, $config->netvisorBaseUrl, $config->netvisorAuth);
 
 $mapper = new NetvisorSalesOrderMapper($logger, $config);
