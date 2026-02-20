@@ -48,18 +48,22 @@ final class OrderSyncService
                 $xml = $this->mapper->toSalesOrderXml($order);
                 $resp = $this->netvisor->createSalesOrderXml($xml);
 
-                // Demo: jos parsed vastauksessa näkyy NetvisorKey, tallenna se
+                // Demo: if the parsed response contains NetvisorKey, save it (for demo purposes)
                 $netvisorKey = (string)($resp['parsed']['netvisorkey'] ?? $resp['parsed']['NetvisorKey'] ?? '');
                 $this->state->markSent($id, $netvisorKey);
 
                 $this->logger->info('Sent order', ['id' => $id, 'status' => $resp['status'] ?? null, 'netvisorKey' => $netvisorKey]);
             } catch (\Throwable $e) {
                 $this->logger->error('Failed to process order', ['id' => $id, 'error' => $e->getMessage()]);
-                // tuotannossa: DLQ / retry-queue
+                // Prod: DLQ / retry-queue
             }
         }
 
-        // overlap checkpoint: vähennetään esim. 30s, jotta reunatapaukset eivät huku
+       // If there were orders but maxUpdatedAt didn't change, use "now" to avoid looping in the same window
+       if (count($orders) > 0 && $maxUpdatedAt === $lastRunIso) {
+            $maxUpdatedAt = gmdate('c');
+        }
+
         $checkpoint = $this->subtractSeconds($maxUpdatedAt, 30);
         $this->state->setLastRunIso($checkpoint);
 
