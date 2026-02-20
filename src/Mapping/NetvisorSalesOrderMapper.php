@@ -16,56 +16,70 @@ final class NetvisorSalesOrderMapper
     public function toSalesOrderXml(array $order): string
     {
         $currency = $this->xml((string)($order['currency'] ?? 'EUR'));
-        $total = $this->xml((string)($order['totalAmount'] ?? '0'));
+
+        // Money formatting (2 decimals)
+        $totalMoney = $this->money($order['totalAmount'] ?? 0);
+        $total = $this->xml($totalMoney);
 
         $customerName = $this->xml((string)($order['customerName'] ?? 'Unknown'));
-        $ref = $this->xml((string)($order['name'] ?? ''));
-        $date = gmdate('Y-m-d'); // demo: tilauspäivä = nyt
+        $ref          = $this->xml((string)($order['name'] ?? ''));
+        $date         = gmdate('Y-m-d'); // demo: import date
 
         $addr = $order['shippingAddress'] ?? [];
-        $address1 = $this->xml((string)($addr['address1'] ?? ''));
-        $address2 = $this->xml((string)($addr['address2'] ?? ''));
-        $zip = $this->xml((string)($addr['zip'] ?? ''));
-        $city = $this->xml((string)($addr['city'] ?? ''));
-        $country = $this->xml((string)($addr['country'] ?? ''));
+        $delivery1 = $this->xml((string)($addr['address1'] ?? ''));
+        $delivery2 = $this->xml((string)($addr['address2'] ?? ''));
+        $zip       = $this->xml((string)($addr['zip'] ?? ''));
+        $city      = $this->xml((string)($addr['city'] ?? ''));
+        $country   = $this->xml((string)($addr['country'] ?? ''));
 
-        $customerCode = $this->xml($this->config->netvisorDefaultCustomerCode);
-        $paymentTerm = (int)$this->config->netvisorDefaultPaymentTermDays;
-        $vat = $this->config->netvisorDefaultVatPercent;
+        // Defaults from config
+        $customerCode       = $this->xml($this->config->netvisorDefaultCustomerCode);
+        $paymentTermDays    = (int)$this->config->netvisorDefaultPaymentTermDays;
+        $vatPercent         = (float)$this->config->netvisorDefaultVatPercent;
+        $vatCode            = $this->xml($this->config->netvisorDefaultVatCode);
         $defaultProductCode = $this->xml($this->config->netvisorDefaultProductCode);
 
+        // Lines
         $linesXml = '';
         foreach (($order['lines'] ?? []) as $line) {
             $title = $this->xml((string)($line['title'] ?? 'Item'));
-            $sku = $this->xml((string)($line['sku'] ?? ''));
-            $qty = (int)($line['quantity'] ?? 1);
-            $unit = $this->xml((string)($line['unitPrice'] ?? '0'));
+            $sku   = $this->xml((string)($line['sku'] ?? ''));
+            $qty   = (string)((float)($line['quantity'] ?? 1));
 
-            // Demo: jos SKU puuttuu, käytetään default product codea
-            $productCode = $sku !== '' ? $sku : $defaultProductCode;
+            // Unit price formatted to 2 decimals
+            $unitMoney = $this->money($line['unitPrice'] ?? 0);
+            $unit = $this->xml($unitMoney);
+
+            $productCode = ($sku !== '') ? $sku : $defaultProductCode;
 
             $linesXml .= <<<XML
-    <salesinvoiceline>
-      <productcode>{$productCode}</productcode>
-      <productname>{$title}</productname>
-      <quantity>{$qty}</quantity>
-      <unitprice>{$unit}</unitprice>
-      <vatpercent>{$vat}</vatpercent>
-    </salesinvoiceline>
+    <invoiceline>
+      <salesinvoiceproductline>
+        <productidentifier type="customer">{$productCode}</productidentifier>
+        <productname>{$title}</productname>
+        <productunitprice type="gross">{$unit}</productunitprice>
+        <productvatpercentage vatcode="{$vatCode}">{$vatPercent}</productvatpercentage>
+        <salesinvoiceproductlinequantity>{$qty}</salesinvoiceproductlinequantity>
+      </salesinvoiceproductline>
+    </invoiceline>
 
 XML;
         }
 
+        // Always at least one line (demo)
         if ($linesXml === '') {
-            // aina vähintään yksi rivi (demo)
+            $fallbackUnit = $this->xml($this->money($totalMoney));
+
             $linesXml = <<<XML
-    <salesinvoiceline>
-      <productcode>{$defaultProductCode}</productcode>
-      <productname>Shopify order</productname>
-      <quantity>1</quantity>
-      <unitprice>{$total}</unitprice>
-      <vatpercent>{$vat}</vatpercent>
-    </salesinvoiceline>
+    <invoiceline>
+      <salesinvoiceproductline>
+        <productidentifier type="customer">{$defaultProductCode}</productidentifier>
+        <productname>Shopify order</productname>
+        <productunitprice type="gross">{$fallbackUnit}</productunitprice>
+        <productvatpercentage vatcode="{$vatCode}">{$vatPercent}</productvatpercentage>
+        <salesinvoiceproductlinequantity>1</salesinvoiceproductlinequantity>
+      </salesinvoiceproductline>
+    </invoiceline>
 
 XML;
         }
@@ -75,24 +89,25 @@ XML;
 <salesinvoice>
   <invoicetype>order</invoicetype>
   <salesinvoicedate>{$date}</salesinvoicedate>
+  <salesinvoicestatus type="netvisor">undelivered</salesinvoicestatus>
 
   <invoicingcustomeridentifier type="customer">{$customerCode}</invoicingcustomeridentifier>
   <invoicingcustomername>{$customerName}</invoicingcustomername>
 
-  <deliveryaddressline1>{$address1}</deliveryaddressline1>
-  <deliveryaddressline2>{$address2}</deliveryaddressline2>
+  <deliveryaddressline1>{$delivery1}</deliveryaddressline1>
+  <deliveryaddressline2>{$delivery2}</deliveryaddressline2>
   <deliverypostcode>{$zip}</deliverypostcode>
   <deliverycity>{$city}</deliverycity>
   <deliverycountry>{$country}</deliverycountry>
 
-  <referencenumber>{$ref}</referencenumber>
+  <salesinvoicereferencenumber>{$ref}</salesinvoicereferencenumber>
 
-  <paymentterm>{$paymentTerm}</paymentterm>
+  <paymenttermnetdays>{$paymentTermDays}</paymenttermnetdays>
 
   <salesinvoiceamount iso4217currencycode="{$currency}">{$total}</salesinvoiceamount>
 
-  <salesinvoicelines>
-{$linesXml}  </salesinvoicelines>
+  <invoicelines>
+{$linesXml}  </invoicelines>
 </salesinvoice>
 XML;
     }
@@ -100,5 +115,21 @@ XML;
     private function xml(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+    }
+
+    /**
+     * Formats money to "0.00" with dot as decimal separator.
+     * Accepts float/int or strings like "721.9" or "721,9".
+     */
+    private function money(float|int|string $value): string
+    {
+        if (is_string($value)) {
+            $value = str_replace(',', '.', trim($value));
+            $num = (float)$value;
+        } else {
+            $num = (float)$value;
+        }
+
+        return number_format($num, 2, '.', '');
     }
 }
